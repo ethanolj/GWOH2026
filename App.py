@@ -2,10 +2,110 @@ import streamlit as st
 import pandas as pd
 import datetime
 from streamlit_gsheets import GSheetsConnection
-from streamlit_product_card import product_card
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(page_title="God's Work, Our Hands 2026", layout="wide")
+
+# ── Brand colors ──────────────────────────────────────────────────────────────
+# Teal 3155:  #006778
+# Green 3298: #006D55
+# Lime 7490:  #6A963B
+# Brown 7532: #665546
+
+st.markdown("""
+<style>
+/* ── Card ── */
+.project-card {
+    border: 2px solid #006778;
+    border-radius: 12px;
+    padding: 20px;
+    background-color: #ffffff;
+    box-shadow: 0 4px 10px rgba(0, 103, 120, 0.15);
+    height: 100%;
+}
+
+/* ── Card heading ── */
+.project-card h3 {
+    margin: 0 0 12px 0;
+    font-size: 1.1rem;
+    color: #006778;
+}
+
+/* ── Badges ── */
+.project-card .badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #ffffff;
+}
+.badge-category { background-color: #6A963B; }
+.badge-day      { background-color: #665546; }
+
+/* ── Service text ── */
+.project-card .service {
+    font-size: 0.9rem;
+    color: #444;
+    margin: 0;
+}
+
+/* ── View Details button ── */
+div.stButton > button {
+    background-color: #006D55 !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 8px !important;
+}
+div.stButton > button:hover {
+    background-color: #005a45 !important;
+}
+
+/* ── Dialog ── */
+div[data-testid="stDialog"] h1 {
+    color: #006778;
+    font-size: 1.4rem;
+    margin-bottom: 0.5rem;
+}
+.detail-row {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 10px;
+}
+.detail-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #006778;
+    margin-bottom: 2px;
+}
+.detail-value {
+    font-size: 0.92rem;
+    color: #1a1a1a;
+    padding: 6px 10px;
+    background-color: #f5f9f9;
+    border-left: 3px solid #6A963B;
+    border-radius: 4px;
+}
+.detail-divider {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 8px 0;
+}
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3 {
+    color: #006778;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ── Callbacks ─────────────────────────────────────────────────────────────────
 def on_view_details(row_index):
@@ -20,6 +120,27 @@ data = conn.read(spreadsheet=sheet_url)
 COL_NAME  = "Project Name"
 COL_DESC  = "Service"
 COL_URL   = "Signup Link"
+
+# ── Custom project card ───────────────────────────────────────────────────────
+def project_card(row, row_index):
+    st.markdown(f"""
+    <div class="project-card">
+        <h3>{row[COL_NAME]}</h3>
+        <div class="badges">
+            <span class="badge badge-category">🏷️ {row['Category']}</span>
+            <span class="badge badge-day">📅 {row['Day']}</span>
+        </div>
+        <p class="service">{row[COL_DESC]}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    st.button(
+        "View Details",
+        key=f"view_{row_index}",
+        use_container_width=True,
+        on_click=on_view_details,
+        args=(row_index,),
+        type="primary",
+    )
 
 # ── Project details dialog ────────────────────────────────────────────────────
 @st.dialog("Project Details", width="medium")
@@ -36,15 +157,20 @@ def show_project_details(row):
         "Address",
     ]
 
+    rows_html = ""
     for col in DISPLAY_COLS:
         value = row[col]
-
         if pd.isna(value) if not isinstance(value, str) else value == "":
             value = "—"
+        rows_html += f"""
+        <div class="detail-row">
+            <span class="detail-label">{col}</span>
+            <span class="detail-value">{value}</span>
+        </div>
+        """
 
-        st.header(f"**{col}**")
-        st.write(value)
-        st.divider()
+    st.markdown(rows_html, unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
 
     st.link_button(
         "Sign Up",
@@ -92,7 +218,7 @@ for col in data.columns:
         col_min = float(series.min())
         col_max = float(series.max())
 
-        if col_min == col_max:          # nothing to filter
+        if col_min == col_max:
             continue
 
         selected_range = st.sidebar.slider(
@@ -109,7 +235,6 @@ for col in data.columns:
     elif pd.api.types.is_object_dtype(series):
         unique_vals = sorted(series.unique().tolist())
 
-        # Only show multiselect when there are between 2 and 30 distinct values
         if 2 <= len(unique_vals) <= 30:
             selected_vals = st.sidebar.multiselect(
                 label=str(col),
@@ -134,13 +259,7 @@ else:
         cols = st.columns(len(row_df), gap="medium")
         for col_ui, (row_index, row) in zip(cols, row_df.iterrows()):
             with col_ui:
-                product_card(
-                    product_name=str(row[COL_NAME]),
-                    description=str(row[COL_DESC]),
-                    button_text="View Details",
-                    on_button_click=lambda idx=row_index: on_view_details(idx),
-                    styles={"button": {"background-color": "green", "color": "white"}},
-                )
+                project_card(row, row_index)
 
 # ── Open dialog after cards are rendered so first click is caught same run ────
 if "selected_project" in st.session_state:
