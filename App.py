@@ -104,6 +104,34 @@ section[data-testid="stSidebar"] h2,
 section[data-testid="stSidebar"] h3 {
     color: #006778;
 }
+
+/* ── Sidebar background ── */
+section[data-testid="stSidebar"] {
+    background-color: #f0f6f7;
+}
+
+/* ── Sidebar filter labels ── */
+section[data-testid="stSidebar"] label {
+    color: #006778 !important;
+    font-weight: 600 !important;
+}
+
+/* ── Multiselect tags ── */
+span[data-baseweb="tag"] {
+    background-color: #006778 !important;
+    color: #ffffff !important;
+}
+
+/* ── Multiselect tag close button ── */
+span[data-baseweb="tag"] span[role="presentation"] {
+    color: #ffffff !important;
+}
+
+/* ── Sidebar divider ── */
+section[data-testid="stSidebar"] hr {
+    border-color: #006778;
+    opacity: 0.3;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -183,7 +211,7 @@ def show_project_details(row):
 st.sidebar.header("🔍 Filters")
 
 # Columns to skip from filters (free-text or URL-like columns)
-SKIP_COLS = {COL_NAME, COL_DESC, COL_URL, "Volunteers Requested", "Category", "Day"}
+SKIP_COLS = {COL_NAME, COL_DESC, COL_URL, "Volunteers Requested", "Category", "Day", "Minimum Age"}
 
 filtered_data = data.copy()
 
@@ -213,26 +241,8 @@ for col in data.columns:
 
     series = data[col].dropna()
 
-    # ── Numeric column → range slider ─────────────────────────────────────
-    if pd.api.types.is_numeric_dtype(series):
-        col_min = float(series.min())
-        col_max = float(series.max())
-
-        if col_min == col_max:
-            continue
-
-        selected_range = st.sidebar.slider(
-            label=str(col),
-            min_value=col_min,
-            max_value=col_max,
-            value=(col_min, col_max),
-        )
-        filtered_data = filtered_data[
-            filtered_data[col].between(selected_range[0], selected_range[1])
-        ]
-
     # ── Low-cardinality object column → multiselect ───────────────────────
-    elif pd.api.types.is_object_dtype(series):
+    if pd.api.types.is_object_dtype(series):
         unique_vals = sorted(series.unique().tolist())
 
         if 2 <= len(unique_vals) <= 30:
@@ -248,6 +258,73 @@ for col in data.columns:
 
 st.sidebar.markdown("---")
 st.sidebar.caption(f"Showing **{len(filtered_data)}** of **{len(data)}** projects")
+
+# ── Metrics ───────────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+div[data-testid="stMetric"] {
+    background-color: #f0f6f7;
+    border: 1px solid #006778;
+    border-radius: 10px;
+    padding: 12px 16px;
+}
+div[data-testid="stMetric"] label {
+    color: #006778 !important;
+    font-weight: 700 !important;
+    font-size: 0.8rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+    color: #006D55 !important;
+    font-size: 2rem !important;
+    font-weight: 800 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ── Row 1: Total Projects (emphasized) ───────────────────────────────────────
+st.markdown(f"""
+<div style="
+    background: linear-gradient(135deg, #006778, #006D55);
+    border-radius: 12px;
+    padding: 24px 32px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+">
+    <div>
+        <div style="color: rgba(255,255,255,0.75); font-size: 0.78rem; font-weight: 700;
+                    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">
+            Total Projects
+        </div>
+        <div style="color: #ffffff; font-size: 3rem; font-weight: 900; line-height: 1;">
+            {len(filtered_data)}
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ── Row 2: per-day counts ─────────────────────────────────────────────────────
+day_counts  = filtered_data["Day"].value_counts()
+active_days = [d for d in sorted(data["Day"].dropna().unique().tolist()) if day_counts.get(d, 0) > 0]
+
+day_cols = st.columns(len(active_days))
+for day, col in zip(active_days, day_cols):
+    with col:
+        st.metric(f"{day}", day_counts.get(day, 0))
+
+# ── Row 3: per-category counts ────────────────────────────────────────────────
+category_counts   = filtered_data["Category"].value_counts()
+active_categories = [c for c in sorted(data["Category"].dropna().unique().tolist()) if category_counts.get(c, 0) > 0]
+
+cat_cols = st.columns(len(active_categories)) if active_categories else []
+for category, col in zip(active_categories, cat_cols):
+    with col:
+        st.metric(category, category_counts.get(category, 0))
+
+st.markdown("---")
 
 # ── Project cards (2-column grid, dynamic) ────────────────────────────────────
 if filtered_data.empty:
