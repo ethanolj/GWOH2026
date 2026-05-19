@@ -17,9 +17,9 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 data = conn.read(spreadsheet=sheet_url)
 
 # Named aliases for the columns we know about (adjust if your sheet differs)
-COL_NAME  = data.columns[4]   # project name
-COL_DESC  = data.columns[5]   # description
-COL_URL   = data.columns[11]  # sign-up URL
+COL_NAME  = "Project Name"  # project name
+COL_DESC  = "Service"  # description
+COL_URL   = "Signup Link"  # sign-up URL
 
 # ── Parse date/time columns (columns 8 & 9 in the sheet) ─────────────────────
 # Google Sheets exports dates in M/D/YYYY H:MM format (e.g. "9/12/2026 9:00")
@@ -35,10 +35,18 @@ for idx in DATE_COL_INDICES:
 def show_project_details(row):
     st.title(str(row[COL_NAME]))
 
-    for col in data.columns:
+    DISPLAY_COLS = [
+        "Service",
+        "Start Date & Time",
+        "End Date & Time",
+        "Minimum Age",
+        'Volunteer Requirements',
+        "Address"
+    ]
+
+    for col in DISPLAY_COLS:
         value = row[col]
 
-        # Format datetimes cleanly
         if pd.api.types.is_datetime64_any_dtype(data[col]) and pd.notna(value):
             value = pd.Timestamp(value).strftime("%B %d, %Y %I:%M %p")
         elif pd.isna(value) if not isinstance(value, str) else value == "":
@@ -52,7 +60,7 @@ def show_project_details(row):
         "Sign Up",
         url=str(row[COL_URL]),
         type="primary",
-        use_container_width=True,
+        use_container_width=False,
     )
 
 # ── Sidebar filters ───────────────────────────────────────────────────────────
