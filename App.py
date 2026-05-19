@@ -16,19 +16,10 @@ sheet_url = st.secrets["sheet_url"]
 conn = st.connection("gsheets", type=GSheetsConnection)
 data = conn.read(spreadsheet=sheet_url)
 
-# Named aliases for the columns we know about (adjust if your sheet differs)
-COL_NAME  = "Project Name"  # project name
-COL_DESC  = "Service"  # description
-COL_URL   = "Signup Link"  # sign-up URL
-
-# ── Parse date/time columns (columns 8 & 9 in the sheet) ─────────────────────
-# Google Sheets exports dates in M/D/YYYY H:MM format (e.g. "9/12/2026 9:00")
-GSHEETS_DT_FORMAT = "%m/%d/%Y %H:%M"
-DATE_COL_INDICES = [8, 9]
-
-for idx in DATE_COL_INDICES:
-    col = data.columns[idx]
-    data[col] = pd.to_datetime(data[col], format=GSHEETS_DT_FORMAT, errors="coerce")
+# Named aliases for the columns we know about
+COL_NAME  = "Project Name"
+COL_DESC  = "Service"
+COL_URL   = "Signup Link"
 
 # ── Project details dialog ────────────────────────────────────────────────────
 @st.dialog("Project Details", width="medium")
@@ -37,19 +28,18 @@ def show_project_details(row):
 
     DISPLAY_COLS = [
         "Service",
-        "Start Date & Time",
-        "End Date & Time",
+        "Day",
+        "Start Time",
+        "End Time",
         "Minimum Age",
-        'Volunteer Requirements',
-        "Address"
+        "Volunteer Requirements",
+        "Address",
     ]
 
     for col in DISPLAY_COLS:
         value = row[col]
 
-        if pd.api.types.is_datetime64_any_dtype(data[col]) and pd.notna(value):
-            value = pd.Timestamp(value).strftime("%B %d, %Y %I:%M %p")
-        elif pd.isna(value) if not isinstance(value, str) else value == "":
+        if pd.isna(value) if not isinstance(value, str) else value == "":
             value = "—"
 
         st.header(f"**{col}**")
@@ -67,9 +57,29 @@ def show_project_details(row):
 st.sidebar.header("🔍 Filters")
 
 # Columns to skip from filters (free-text or URL-like columns)
-SKIP_COLS = {COL_NAME, COL_DESC, COL_URL}
+SKIP_COLS = {COL_NAME, COL_DESC, COL_URL, "Volunteers Requested", "Category", "Day"}
 
 filtered_data = data.copy()
+
+# ── Category filter (explicit) ─────────────────────────────────────────────
+category_vals = sorted(data["Category"].dropna().unique().tolist())
+selected_categories = st.sidebar.multiselect(
+    label="Category",
+    options=category_vals,
+    default=category_vals,
+)
+if selected_categories:
+    filtered_data = filtered_data[filtered_data["Category"].isin(selected_categories)]
+
+# ── Day filter (explicit) ──────────────────────────────────────────────────
+day_vals = sorted(data["Day"].dropna().unique().tolist())
+selected_days = st.sidebar.multiselect(
+    label="Day",
+    options=day_vals,
+    default=day_vals,
+)
+if selected_days:
+    filtered_data = filtered_data[filtered_data["Day"].isin(selected_days)]
 
 for col in data.columns:
     if col in SKIP_COLS:
@@ -77,56 +87,8 @@ for col in data.columns:
 
     series = data[col].dropna()
 
-    # ── Datetime column → date + time range picker ────────────────────────
-    if pd.api.types.is_datetime64_any_dtype(series):
-        dt_min = series.min().to_pydatetime()
-        dt_max = series.max().to_pydatetime()
-
-        if dt_min == dt_max:            # nothing to filter
-            continue
-
-        st.sidebar.markdown(f"**{col}**")
-
-        start_date = st.sidebar.date_input(
-            label=f"{col} — from date",
-            value=dt_min.date(),
-            min_value=dt_min.date(),
-            max_value=dt_max.date(),
-            key=f"{col}_start_date",
-        )
-        start_time = st.sidebar.time_input(
-            label=f"{col} — from time",
-            value=dt_min.time(),
-            step=datetime.timedelta(minutes=30),
-            key=f"{col}_start_time",
-        )
-
-        end_date = st.sidebar.date_input(
-            label=f"{col} — to date",
-            value=dt_max.date(),
-            min_value=dt_min.date(),
-            max_value=dt_max.date(),
-            key=f"{col}_end_date",
-        )
-        end_time = st.sidebar.time_input(
-            label=f"{col} — to time",
-            value=dt_max.time(),
-            step=datetime.timedelta(minutes=30),
-            key=f"{col}_end_time",
-        )
-
-        start_dt = datetime.datetime.combine(start_date, start_time)
-        end_dt   = datetime.datetime.combine(end_date,   end_time)
-
-        if start_dt > end_dt:
-            st.sidebar.warning(f"'{col}': start is after end — filter ignored.")
-        else:
-            filtered_data = filtered_data[
-                filtered_data[col].between(pd.Timestamp(start_dt), pd.Timestamp(end_dt))
-            ]
-
     # ── Numeric column → range slider ─────────────────────────────────────
-    elif pd.api.types.is_numeric_dtype(series):
+    if pd.api.types.is_numeric_dtype(series):
         col_min = float(series.min())
         col_max = float(series.max())
 
@@ -162,7 +124,7 @@ for col in data.columns:
 st.sidebar.markdown("---")
 st.sidebar.caption(f"Showing **{len(filtered_data)}** of **{len(data)}** projects")
 
-# ── Product cards (2-column grid, dynamic) ────────────────────────────────────
+# ── Project cards (2-column grid, dynamic) ────────────────────────────────────
 if filtered_data.empty:
     st.info("No projects match the selected filters.")
 else:
